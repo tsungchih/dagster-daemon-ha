@@ -1,0 +1,143 @@
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-elector
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "endpoints"
+  verbs:
+  - "*"
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-elector
+subjects:
+- kind: ServiceAccount
+  name: dagster
+  namespace: dagster
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: leader-elector
+  apiGroup: ""
+---
+# Source: dagster/templates/configmap-env-daemon.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dagster-daemon-env
+  labels:
+    app: dagster
+    chart: dagster-1.2.4
+    release: dagster
+    heritage: Helm
+data:
+  
+  DAGSTER_HOME: "/opt/dagster/dagster_home"
+  DAGSTER_K8S_PG_PASSWORD_SECRET: "dagster-postgresql-secret"
+  DAGSTER_K8S_INSTANCE_CONFIG_MAP: "dagster-instance"
+  DAGSTER_K8S_PIPELINE_RUN_NAMESPACE: "default"
+  DAGSTER_K8S_PIPELINE_RUN_ENV_CONFIGMAP: "dagster-pipeline-env"
+  DAGSTER_K8S_PIPELINE_RUN_IMAGE: "docker.io/dagster/user-code-example:1.2.1"
+  DAGSTER_K8S_PIPELINE_RUN_IMAGE_PULL_POLICY: "IfNotPresent"
+  # This is a list by default, but for backcompat it can be a map. If it's a list, the env is applied directly
+  # to the container.
+---
+# Source: dagster/templates/deployment-daemon.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dagster-daemon
+  labels:
+    app.kubernetes.io/name: dagster
+    app.kubernetes.io/instance: dagster
+    app.kubernetes.io/version: "1.2.4"
+    app.kubernetes.io/managed-by: User
+    component: dagster-daemon
+    deployment: daemon
+  annotations:
+spec:
+  replicas: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dagster
+      app.kubernetes.io/instance: dagster
+      component: dagster-daemon
+      deployment: daemon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dagster
+        app.kubernetes.io/instance: dagster
+        component: dagster-daemon
+        deployment: daemon
+    spec:
+      serviceAccountName: dagster
+      initContainers:
+        - name: check-db-ready
+          image: "postgres:12.12"
+          imagePullPolicy: "IfNotPresent"
+          command: ['sh', '-c', 'until pg_isready -h dagster-postgresql -p 5432 -U dagster; do echo waiting for database; sleep 2; done;']
+      containers:
+        - name: leader-elector
+          imagePullPolicy: IfNotPresent
+          image: "georgelai/leader-elector:amd64-0.1.0"
+          env:
+            - name: GLOG_vmodule
+              value: "leaderelection=3"
+            - name: NAMESPACE
+              value: "dagster"
+            - name: ELECTION
+              value: "test"
+            - name: HTTP_ENDPOINT
+              value: "0.0.0.0:4040"
+            - name: TTL
+              value: "5s"
+          ports:
+            - name: web
+              containerPort: 4040
+              protocol: TCP
+        - name: dagster
+          imagePullPolicy: IfNotPresent
+          image: "georgelai/dagster-daemon:1.2.4"
+          command: ["/entrypoint.sh"]
+          env:
+            - name: DAGSTER_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "dagster-postgresql-secret"
+                  key: postgresql-password
+            - name: DAGSTER_DAEMON_HEARTBEAT_TOLERANCE
+              value: "300"
+            # This is a list by default, but for backcompat it can be a map. As a map it's written to the daemon-env
+            # configmap.
+          envFrom:
+            - configMapRef:
+                name: dagster-daemon-env
+          volumeMounts:
+            - name: dagster-instance
+              mountPath: "/opt/dagster/dagster_home/dagster.yaml"
+              subPath: dagster.yaml
+            # Do not use `subPath` to allow the configmap to update if modified
+            - name: dagster-workspace-yaml
+              mountPath: "/dagster-workspace/"
+          resources:
+            limits:
+              cpu: 250m
+              memory: 500Mi
+            requests:
+              cpu: 250m
+              memory: 500Mi
+      volumes:
+        - name: dagster-instance
+          configMap:
+            name: dagster-instance
+        - name: dagster-workspace-yaml
+          configMap:
+            name: dagster-workspace
