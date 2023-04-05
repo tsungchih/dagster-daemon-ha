@@ -20,4 +20,5 @@ helm --namespace=dagster upgrade \
   --version=${DAGSTER_CHART_VERSION} \
   --values=${WORKING_DIR}/deploy/dagster-values.yaml
 
+kubectl --namespace=dagster create -f ${WORKING_DIR}/deploy/role-leader-elector.yaml
 kubectl --namespace=dagster create -f ${WORKING_DIR}/deploy/dagster-daemon.yaml
