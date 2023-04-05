@@ -1,30 +1,4 @@
 ---
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: leader-elector
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - "endpoints"
-  verbs:
-  - "*"
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: leader-elector
-subjects:
-- kind: ServiceAccount
-  name: dagster
-  namespace: dagster
-  apiGroup: ""
-roleRef:
-  kind: ClusterRole
-  name: leader-elector
-  apiGroup: ""
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,11 +7,10 @@ metadata:
     app: dagster
     component: dagster-daemon
 data:
-
   DAGSTER_HOME: "/opt/dagster/dagster_home"
   DAGSTER_K8S_PG_PASSWORD_SECRET: "dagster-postgresql-secret"
   DAGSTER_K8S_INSTANCE_CONFIG_MAP: "dagster-instance"
-  DAGSTER_K8S_PIPELINE_RUN_NAMESPACE: "default"
+  DAGSTER_K8S_PIPELINE_RUN_NAMESPACE: "dagster"
   DAGSTER_K8S_PIPELINE_RUN_ENV_CONFIGMAP: "dagster-pipeline-env"
   DAGSTER_K8S_PIPELINE_RUN_IMAGE: "docker.io/dagster/user-code-example:1.2.4"
   DAGSTER_K8S_PIPELINE_RUN_IMAGE_PULL_POLICY: "IfNotPresent"

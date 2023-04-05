@@ -1,0 +1,28 @@
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: dagster
+  name: leader-elector
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "endpoints"
+  verbs:
+  - "*"
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: dagster
+  name: leader-elector
+subjects:
+- kind: ServiceAccount
+  name: dagster
+  namespace: dagster
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: leader-elector
+  apiGroup: rbac.authorization.k8s.io
